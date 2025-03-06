@@ -1,3 +1,4 @@
+// src/components/FlowchartEditor.tsx
 "use client";
 
 import React, { useCallback, useState, useEffect, useRef } from "react";
@@ -42,12 +43,8 @@ const FlowchartEditor: React.FC<FlowchartEditorProps> = ({ diagramId }) => {
       try {
         const data = await getFlowchart(diagramId);
         if (data) {
-          if (data.nodes) {
-            // (Optional) Process nodes if needed
-            setNodes(data.nodes);
-          }
+          if (data.nodes) setNodes(data.nodes);
           if (data.edges) {
-            // Replace markerEnd and data fields if they are null
             const processedEdges = data.edges.map((edge: any) => ({
               ...edge,
               markerEnd: edge.markerEnd || {},
@@ -131,13 +128,22 @@ const FlowchartEditor: React.FC<FlowchartEditorProps> = ({ diagramId }) => {
     setSelectedNode(node);
   };
 
-  const updateNodeProperties = (nodeId: string, newProperties: any) => {
+  const updateNodeProperties = (nodeId: string, newData: any) => {
     setNodes((nds) =>
-      nds.map((node) =>
-        node.id === nodeId
-          ? { ...node, data: { ...node.data, properties: newProperties } }
-          : node
-      )
+      nds.map((node) => {
+        if (node.id === nodeId) {
+          const { label, ...props } = newData;
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              label: label, // store as plain string
+              properties: props, // store the rest as objects { value, isLocked }
+            },
+          };
+        }
+        return node;
+      })
     );
   };
 

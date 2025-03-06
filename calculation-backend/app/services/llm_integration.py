@@ -11,8 +11,8 @@ load_dotenv()
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
-if not openai.api_key:
-    raise ValueError("Missing OpenAI API key. Set OPENAI_API_KEY in .env or environment variables.")
+# if not openai.api_key:
+#     raise ValueError("Missing OpenAI API key. Set OPENAI_API_KEY in .env or environment variables.")
 
 def build_flowchart_prompt(flowchart_id: str, nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]]) -> str:
     """
@@ -54,6 +54,7 @@ Please:
 
 Output only valid JSON.
 """
+    print(prompt)
     return prompt
 
 def call_llm_for_flowchart(prompt: str) -> Dict[str, Any]:
