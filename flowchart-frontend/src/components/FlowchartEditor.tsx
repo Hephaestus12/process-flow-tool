@@ -18,6 +18,7 @@ import TitleBar from "./TitleBar";
 import { getFlowchart, saveFlowchart, runFlowchart } from "@/api/FlowchartApi";
 import { Button } from "@/components/ui/button";
 import { getDefaultProperties } from "@/utils/flowchartUtils";
+import { ensurePropertyFields } from "@/utils/propertyUtils";
 
 interface GraphDTO {
   id: string;
@@ -36,6 +37,7 @@ const FlowchartEditor: React.FC<FlowchartEditorProps> = ({ diagramId }) => {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
+  const [selectedEdge, setSelectedEdge] = useState<Edge | null>(null);
 
   // Load existing diagram using the diagramId.
   useEffect(() => {
@@ -48,7 +50,19 @@ const FlowchartEditor: React.FC<FlowchartEditorProps> = ({ diagramId }) => {
             const processedEdges = data.edges.map((edge: any) => ({
               ...edge,
               markerEnd: edge.markerEnd || {},
-              data: edge.data || {},
+              data: {
+                ...edge.data,
+                properties: Object.entries(edge.data?.properties || {}).reduce(
+                  (acc, [key, value]: [string, any]) => ({
+                    ...acc,
+                    [key]:
+                      typeof value === "object" && value !== null
+                        ? value
+                        : { value: value || "", isLocked: false },
+                  }),
+                  {}
+                ),
+              },
             }));
             setEdges(processedEdges);
           }
@@ -95,8 +109,20 @@ const FlowchartEditor: React.FC<FlowchartEditorProps> = ({ diagramId }) => {
 
   const constructGraphDTO = (): GraphDTO => ({
     id: diagramId,
-    nodes,
-    edges,
+    nodes: nodes.map((node) => ({
+      ...node,
+      data: {
+        ...node.data,
+        properties: node.data?.properties || {},
+      },
+    })),
+    edges: edges.map((edge) => ({
+      ...edge,
+      data: {
+        ...edge.data,
+        properties: edge.data?.properties || {},
+      },
+    })),
   });
 
   const handleSave = async () => {
@@ -115,9 +141,35 @@ const FlowchartEditor: React.FC<FlowchartEditorProps> = ({ diagramId }) => {
       const graphDto = constructGraphDTO();
       console.log("Request body for run:", graphDto);
       await saveFlowchart(diagramId, graphDto);
-      const updated = await runFlowchart(diagramId, graphDto);
-      if (updated.nodes) setNodes(updated.nodes);
-      if (updated.edges) setEdges(updated.edges);
+      const response = await runFlowchart(diagramId, graphDto);
+
+      // Process and update nodes
+      if (response.nodes) {
+        setNodes(response.nodes);
+      }
+
+      // Process and update edges
+      if (response.edges) {
+        const processedEdges = response.edges.map((edge: any) => ({
+          ...edge,
+          markerEnd: edge.markerEnd || {},
+          data: {
+            ...edge.data,
+            properties: Object.entries(edge.data?.properties || {}).reduce(
+              (acc, [key, value]: [string, any]) => ({
+                ...acc,
+                [key]:
+                  typeof value === "object" && value !== null
+                    ? value
+                    : { value: value || "", isLocked: false },
+              }),
+              {}
+            ),
+          },
+        }));
+        setEdges(processedEdges);
+      }
+
       alert("Flowchart processed and updated!");
     } catch (error) {
       console.error("Error running flowchart process:", error);
@@ -126,23 +178,51 @@ const FlowchartEditor: React.FC<FlowchartEditorProps> = ({ diagramId }) => {
 
   const onNodeClick = (_: any, node: Node) => {
     setSelectedNode(node);
+    setSelectedEdge(null);
+  };
+
+  const onEdgeClick = (_: any, edge: Edge) => {
+    setSelectedEdge(edge);
+    setSelectedNode(null);
   };
 
   const updateNodeProperties = (nodeId: string, newData: any) => {
     setNodes((nds) =>
       nds.map((node) => {
         if (node.id === nodeId) {
-          const { label, ...props } = newData;
+          const label =
+            typeof newData.label === "string"
+              ? newData.label
+              : String(newData.label?.value || "");
+          // Remove 'label' from newData; the rest belong to properties.
+          const { label: _ignore, ...props } = newData;
           return {
             ...node,
             data: {
               ...node.data,
-              label: label, // store as plain string
-              properties: props, // store the rest as objects { value, isLocked }
+              label,
+              properties: props,
             },
           };
         }
         return node;
+      })
+    );
+  };
+
+  const updateEdgeProperties = (edgeId: string, newData: any) => {
+    setEdges((eds) =>
+      eds.map((edge) => {
+        if (edge.id === edgeId) {
+          return {
+            ...edge,
+            data: {
+              ...edge.data,
+              properties: newData,
+            },
+          };
+        }
+        return edge;
       })
     );
   };
@@ -158,12 +238,33 @@ const FlowchartEditor: React.FC<FlowchartEditorProps> = ({ diagramId }) => {
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={(connection) =>
-            setEdges((eds) => addEdge(connection, eds))
+            setEdges((eds) =>
+              addEdge(
+                {
+                  ...connection,
+                  data: {
+                    properties: {
+                      chemical: { value: "", isLocked: false },
+                      material: { value: "", isLocked: false },
+                      diameter: { value: "", isLocked: false },
+                      length: { value: "", isLocked: false },
+                      flowRate: { value: "", isLocked: false },
+                      temperature: { value: "", isLocked: false },
+                      pressure: { value: "", isLocked: false },
+                      insulation: { value: "", isLocked: false },
+                      insulationThickness: { value: "", isLocked: false },
+                    },
+                  },
+                },
+                eds
+              )
+            )
           }
           onInit={setReactFlowInstance}
           onDrop={onDrop}
           onDragOver={onDragOver}
           onNodeClick={onNodeClick}
+          onEdgeClick={onEdgeClick}
           fitView
         >
           <Background />
@@ -175,7 +276,9 @@ const FlowchartEditor: React.FC<FlowchartEditorProps> = ({ diagramId }) => {
       </div>
       <PropertiesPanel
         selectedNode={selectedNode}
+        selectedEdge={selectedEdge}
         updateNodeProperties={updateNodeProperties}
+        updateEdgeProperties={updateEdgeProperties}
       />
     </div>
   );
